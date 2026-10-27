@@ -305,8 +305,8 @@ function renderTask(t, { depth = 0, crumb = false, showFile = false, draggable =
       </div>
       <div class="task-actions">
         ${isOpen(t) ? '<button type="button" class="icon-btn" data-action="cal-menu" title="Поставить в Google Календарь" aria-label="Поставить в Google Календарь">📆</button>' : ''}
-        <button type="button" class="icon-btn" data-action="add-sub" title="Добавить подзадачу" aria-label="Добавить подзадачу">＋</button>
-        ${t.archived ? '' : '<button type="button" class="icon-btn text" data-action="archive" title="Отметить выполненной и перенести в раздел ARCHIVE заметки">В архив</button>'}
+        ${isClosed(t) ? '' : '<button type="button" class="icon-btn" data-action="add-sub" title="Добавить подзадачу" aria-label="Добавить подзадачу">＋</button>'}
+        ${t.inArchive && !t.parentKey ? '<button type="button" class="icon-btn text" data-action="toggle" title="Открыть задачу и вернуть к открытым задачам заметки">Вернуть</button>' : ''}
       </div>
     </div>
     ${editing ? renderEditor(t, depth) : ''}
@@ -504,7 +504,9 @@ function renderMatrix() {
     <div class="lanes">${['none', 'someday'].map(cell).join('')}</div>`;
 }
 
-// --- Выполненные
+// --- Архив: закрытые задачи, последние сверху. Галочка или «Вернуть» открывает задачу
+// и возвращает её к открытым задачам заметки.
+const closedOutsideArchive = () => state.data.tasks.filter((t) => isClosed(t) && !t.parentKey && !t.archived && t.description);
 
 function renderDone() {
   const doneDate = (t) => t.done ?? t.cancelled ?? '';
@@ -513,8 +515,14 @@ function renderDone() {
     .filter((t) => !t.parentKey || !isClosed(state.byKey.get(t.parentKey) ?? {}))
     .sort((a, b) => doneDate(b).localeCompare(doneDate(a)))
     .slice(0, 200);
-  if (!list.length) return '<div class="empty">Выполненных задач пока нет.</div>';
-  let html = '<div class="tree">';
+  const stray = closedOutsideArchive().length;
+  const banner = stray ? `
+    <div class="archive-note">
+      <span>Выполнено, но ещё не в архиве: ${stray}. Такие задачи остаются наверху заметки, например если их отметили в Obsidian.</span>
+      <button type="button" class="btn" data-action="archive-closed">Перенести в архив</button>
+    </div>` : '';
+  if (!list.length) return `${banner}<div class="empty">Архив пока пуст.</div>`;
+  let html = `${banner}<div class="tree">`;
   let day;
   for (const t of list) {
     if (doneDate(t) !== day) {
@@ -542,7 +550,7 @@ function renderSidebar() {
 
   const whenItems = WHEN.map((w) => item('when', w.key, w.label, count(scoped, w.test), state.when === w.key,
     w.key === 'today' && overdueCount ? `<span class="late-dot" title="Из них просрочено">${overdueCount}</span>` : '')).join('')
-    + item('when', 'done', 'Выполненные', '', state.when === 'done');
+    + item('when', 'done', 'Архив', '', state.when === 'done');
 
   const quadItems = item('quadrant', 'all', 'Все квадранты', count(scoped), state.quadrant === 'all')
     + QUADRANTS.map((q) => item('quadrant', q.key, `<span class="swatch q-${q.key}"></span>${q.short === 'Нет' || q.short === 'Позже' ? q.title : `${q.short} · ${q.title}`}`,
@@ -580,7 +588,7 @@ function renderSidebar() {
 
 function renderHeader() {
   const { today } = state.r;
-  const title = state.when === 'done' ? 'Выполненные' : whenDef(state.when).label;
+  const title = state.when === 'done' ? 'Архив' : whenDef(state.when).label;
   document.getElementById('title').textContent = title;
   const weekdayName = WEEKDAYS_FULL[weekday(today)];
   const dateLine = `${weekdayName[0].toUpperCase()}${weekdayName.slice(1)}, ${+today.slice(8, 10)} ${MONTHS_FULL[+today.slice(5, 7) - 1]}`;
@@ -701,6 +709,12 @@ function openEditor(t) {
 }
 
 // Сначала перенос (строка задачи при нём не меняется), затем правки уже на новом месте.
+function toggleMessage(t) {
+  if (t.parentKey || t.archived && !t.inArchive) return isClosed(t) ? 'Задача снова открыта' : 'Выполнено';
+  if (isClosed(t)) return t.inArchive ? 'Задача возвращена из архива' : 'Задача снова открыта';
+  return 'Выполнено и перенесено в архив';
+}
+
 async function saveEditor() {
   if (pendingTitles.size) await waitTitles();
   const t = state.byKey.get(state.editing.key);
@@ -945,9 +959,9 @@ document.addEventListener('click', async (e) => {
 
   switch (action) {
     case 'toggle':
-      return mutate('/api/update', { ...ref(t), changes: { status: isClosed(t) ? ' ' : 'x' } }, isClosed(t) ? 'Задача снова открыта' : 'Выполнено');
-    case 'archive':
-      return mutate('/api/archive', ref(t), 'Выполнено и перенесено в архив');
+      return mutate('/api/update', { ...ref(t), changes: { status: isClosed(t) ? ' ' : 'x' } }, toggleMessage(t));
+    case 'archive-closed':
+      return mutate('/api/archive-closed', {}, `В архив перенесено задач: ${closedOutsideArchive().length}`);
     case 'edit':
       return openEditor(t);
     case 'ed-cancel':

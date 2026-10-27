@@ -86,17 +86,17 @@ test('подзадача добавляется в конец блока с те
   assert.equal(lines[5], '- [ ] другая ⏫');
 });
 
-test('выполнение повторяющейся задачи создаёт следующую копию выше', async () => {
+test('выполненная повторяющаяся задача уходит в архив, новая копия остаётся на её месте', async () => {
   const t = await findTask('30 PERSONAL/40 CREATE.md', 'Дайджест');
   await vault.updateTask({ path: t.path, line: t.line, raw: t.raw, changes: { status: 'x' } });
-  const lines = (await read('30 PERSONAL/40 CREATE.md')).split('\n');
-  assert.equal(lines[2], `- [ ] Дайджест ⏫ 🔁 every week on Monday ➕ ${today} ⏳ 2026-11-02`);
-  assert.equal(lines[3], `- [x] Дайджест ⏫ 🔁 every week on Monday ➕ 2026-10-25 ⏳ 2026-10-26 ✅ ${today}`);
+  const text = await read('30 PERSONAL/40 CREATE.md');
+  assert.equal(text.split('\n')[2], `- [ ] Дайджест ⏫ 🔁 every week on Monday ➕ ${today} ⏳ 2026-11-02`);
+  assert.ok(text.endsWith(`## ARCHIVE\n\n- [x] Дайджест ⏫ 🔁 every week on Monday ➕ 2026-10-25 ⏳ 2026-10-26 ✅ ${today}\n`), text);
 });
 
-test('архив: блок с подзадачами выполняется и уходит в конец ARCHIVE', async () => {
+test('выполненная задача уходит с подзадачами в конец ARCHIVE; отмена возвращает', async () => {
   const t = await findTask('30 PERSONAL/30 TRY.md', 'книга');
-  const { opId } = await vault.archiveTask({ path: t.path, line: t.line, raw: t.raw });
+  const { opId } = await vault.updateTask({ path: t.path, line: t.line, raw: t.raw, changes: { status: 'x' } });
   assert.equal(await read('30 PERSONAL/30 TRY.md'), [
     '',
     '- [ ] другая ⏫',
@@ -116,11 +116,50 @@ test('архив: блок с подзадачами выполняется и �
   assert.match(await read('30 PERSONAL/30 TRY.md'), /^\n- \[ \] книга ⏫ ➕ 2026-09-22\n\t- \[ \] шаг один\n/);
 });
 
-test('архив создаёт раздел, если его нет; подзадача выравнивается влево', async () => {
+test('снятая галочка возвращает задачу из архива и открывает подзадачи, закрытые с ней', async () => {
+  const t = await findTask('30 PERSONAL/30 TRY.md', 'книга');
+  await vault.updateTask({ path: t.path, line: t.line, raw: t.raw, changes: { status: 'x' } });
+  const archived = await findTask('30 PERSONAL/30 TRY.md', 'книга');
+  assert.equal(archived.inArchive, true);
+  await vault.updateTask({ path: archived.path, line: archived.line, raw: archived.raw, changes: { status: ' ' } });
+  assert.equal(await read('30 PERSONAL/30 TRY.md'), [
+    '',
+    '- [ ] другая ⏫',
+    '- [ ] книга ⏫ ➕ 2026-09-22',
+    '\t- [ ] шаг один',
+    '\t- [x] шаг два ✅ 2026-10-01',
+    '',
+    '---',
+    '',
+    '## ARHIVE',
+    '',
+    '- [x] сделано ⏫ ✅ 2026-09-23',
+    '',
+  ].join('\n'));
+});
+
+test('подзадача отмечается на месте, а задача без раздела архива создаёт его', async () => {
   await write('20 WORK/p.md', 'Epic\n\n- [ ] задача\n\t- [ ] подзадача ⏫\n');
-  const t = await findTask('20 WORK/p.md', 'подзадача');
-  await vault.archiveTask({ path: t.path, line: t.line, raw: t.raw });
-  assert.equal(await read('20 WORK/p.md'), `Epic\n\n- [ ] задача\n\n---\n\n## ARCHIVE\n\n- [x] подзадача ⏫ ✅ ${today}\n`);
+  const sub = await findTask('20 WORK/p.md', 'подзадача');
+  await vault.updateTask({ path: sub.path, line: sub.line, raw: sub.raw, changes: { status: '-' } });
+  assert.equal(await read('20 WORK/p.md'), `Epic\n\n- [ ] задача\n\t- [-] подзадача ⏫ ❌ ${today}\n`);
+
+  const t = await findTask('20 WORK/p.md', 'задача');
+  await vault.updateTask({ path: t.path, line: t.line, raw: t.raw, changes: { status: 'x' } });
+  assert.equal(await read('20 WORK/p.md'), `Epic\n\n---\n\n## ARCHIVE\n\n- [x] задача ✅ ${today}\n\t- [-] подзадача ⏫ ❌ ${today}\n`);
+});
+
+test('уборка переносит выполненные задачи над архивом в ARCHIVE по порядку', async () => {
+  await write('20 WORK/s.md', '- [x] первая ✅ 2026-10-20\n- [ ] открытая\n- [-] вторая ❌ 2026-10-21\n\t- [ ] шаг\n\n## ARCHIVE\n\n- [x] старая ✅ 2026-09-01\n');
+  const { count, opId } = await vault.archiveClosed();
+  assert.equal(count, 3, 'две из s.md и «статьи» из 40 CREATE.md');
+  assert.equal(await read('20 WORK/s.md'), `- [ ] открытая\n\n## ARCHIVE\n\n- [x] старая ✅ 2026-09-01\n- [x] первая ✅ 2026-10-20\n- [-] вторая ❌ 2026-10-21\n\t- [-] шаг ❌ ${today}\n`);
+  assert.ok((await read('30 PERSONAL/40 CREATE.md')).endsWith('## ARCHIVE\n\n- [x] статьи ⏫ ✅ 2026-10-26\n'));
+  await assert.rejects(vault.archiveClosed(), { status: 422 });
+
+  await vault.undo({ opId });
+  assert.match(await read('20 WORK/s.md'), /^- \[x\] первая/);
+  assert.match(await read('30 PERSONAL/40 CREATE.md'), /## ALL\n\n- \[x\] статьи/);
 });
 
 test('перенос в другую заметку вместе с подзадачами; отмена возвращает обе', async () => {

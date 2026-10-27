@@ -876,7 +876,8 @@ body.drag-task .nav-note {
 
 .task:hover .task-actions,
 .task:focus-within .task-actions,
-.task.is-editing .task-actions {
+.task.is-editing .task-actions,
+body[data-view="done"] .task-actions {
   opacity: 1;
 }
 
@@ -1169,6 +1170,20 @@ body.drag-task .nav-note {
 .pop-item:hover,
 .pop-item.on {
   background: var(--hover);
+}
+
+.archive-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink-2);
 }
 
 .day-actions:not(:empty) {
