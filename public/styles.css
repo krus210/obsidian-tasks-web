@@ -1171,6 +1171,31 @@ body.drag-task .nav-note {
   background: var(--hover);
 }
 
+.cal-pop {
+  display: grid;
+  gap: 12px;
+  width: min(440px, calc(100vw - 24px));
+  padding: 8px;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 10px 14px;
+  align-items: center;
+}
+
+.cal-pop .btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.cal-note {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 0.8rem;
+}
+
 .toast {
   position: fixed;
   left: 50%;

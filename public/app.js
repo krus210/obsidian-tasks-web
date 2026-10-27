@@ -1,6 +1,8 @@
 // Интерфейс задач: фильтры, дерево заметок, матрица Эйзенхауэра и быстрый ввод.
 // Все изменения уходят на сервер, который правит строки в заметках Obsidian.
 
+import { calendarUrl } from './calendar.js';
+
 const QUADRANTS = [
   { key: 'q1', priority: 'highest', emoji: '🔺', short: 'Q1', title: 'Сделать сейчас', hint: 'Важно и срочно' },
   { key: 'q2', priority: 'high', emoji: '⏫', short: 'Q2', title: 'Планомерно двигать', hint: 'Важно, не срочно' },
@@ -105,6 +107,7 @@ const state = {
   editing: null,
   addingSub: null,
   qa: { priority: null, date: null, due: null, target: null },
+  cal: null,
   pendingReload: false,
 };
 
@@ -300,6 +303,7 @@ function renderTask(t, { depth = 0, crumb = false, showFile = false, draggable =
         <span class="task-meta">${meta(t, { kids, collapsed, showFile })}</span>
       </div>
       <div class="task-actions">
+        ${isOpen(t) ? '<button type="button" class="icon-btn" data-action="cal-menu" title="Поставить в Google Календарь" aria-label="Поставить в Google Календарь">📆</button>' : ''}
         <button type="button" class="icon-btn" data-action="add-sub" title="Добавить подзадачу" aria-label="Добавить подзадачу">＋</button>
         ${t.archived ? '' : '<button type="button" class="icon-btn text" data-action="archive" title="Отметить выполненной и перенести в раздел ARCHIVE заметки">В архив</button>'}
       </div>
@@ -720,16 +724,81 @@ function setPriority(t, priority) {
   mutate('/api/update', { ...ref(t), changes: { priority } }, `Квадрант: ${q.title}`);
 }
 
-function openPriorityMenu(anchor, t) {
+function showPopover(anchor, html) {
   const pop = document.getElementById('popover');
-  pop.innerHTML = QUADRANTS.map((q) => `
-    <button type="button" class="pop-item q-${q.key}${(t.priority ?? null) === q.priority ? ' on' : ''}" data-action="set-priority" data-key="${esc(t.key)}" data-value="${q.priority ?? ''}">
-      <span class="swatch q-${q.key}"></span>${q.short === 'Нет' ? 'Без квадранта' : q.short} <small>${q.title}</small>
-    </button>`).join('');
+  pop.innerHTML = html;
   const rect = anchor.getBoundingClientRect();
   pop.hidden = false;
   pop.style.top = `${rect.bottom + window.scrollY + 4}px`;
-  pop.style.left = `${Math.min(rect.left + window.scrollX, window.scrollX + document.documentElement.clientWidth - pop.offsetWidth - 12)}px`;
+  pop.style.left = `${Math.max(window.scrollX + 12, Math.min(rect.left + window.scrollX, window.scrollX + document.documentElement.clientWidth - pop.offsetWidth - 12))}px`;
+}
+
+function openPriorityMenu(anchor, t) {
+  showPopover(anchor, QUADRANTS.map((q) => `
+    <button type="button" class="pop-item q-${q.key}${(t.priority ?? null) === q.priority ? ' on' : ''}" data-action="set-priority" data-key="${esc(t.key)}" data-value="${q.priority ?? ''}">
+      <span class="swatch q-${q.key}"></span>${q.short === 'Нет' ? 'Без квадранта' : q.short} <small>${q.title}</small>
+    </button>`).join(''));
+}
+
+// --- Google Календарь: день, время и длительность выбираются здесь, событие сохраняется в Google.
+
+const CAL_TIMES = ['09:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'];
+const CAL_MINUTES = [[15, '15 мин'], [30, '30 мин'], [60, '1 ч'], [90, '1,5 ч'], [120, '2 ч']];
+
+function calendarMenu() {
+  const { date, time, minutes } = state.cal;
+  const today = state.r.today;
+  const days = [['Сегодня', today], ['Завтра', addDays(today, 1)], ['Пн', nextWeekday(today, 0)]];
+  const otherDay = !days.some(([, iso]) => iso === date);
+  const otherTime = time && !CAL_TIMES.includes(time);
+  return `
+    <div class="cal-pop">
+      <div class="cal-grid">
+        <span class="ed-label">День</span>
+        <div class="seg wrap">
+          ${days.map(([label, iso]) => chip(label, date === iso, `data-action="cal-date" data-value="${iso}"`)).join('')}
+          <input type="date" id="cal-date" class="date-input${otherDay ? ' on' : ''}" value="${otherDay ? date : ''}" aria-label="Другой день">
+        </div>
+        <span class="ed-label">Время</span>
+        <div class="seg wrap">
+          ${CAL_TIMES.map((x) => chip(x, time === x, `data-action="cal-time" data-value="${x}"`)).join('')}
+          <input type="time" id="cal-time" class="date-input${otherTime ? ' on' : ''}" step="900" value="${otherTime ? time : ''}" aria-label="Другое время">
+        </div>
+        <span class="ed-label">Длится</span>
+        <div class="seg wrap">${CAL_MINUTES.map(([m, label]) => chip(label, minutes === m, `data-action="cal-minutes" data-value="${m}"`)).join('')}</div>
+      </div>
+      <button type="button" class="btn primary" data-action="cal-open"${time ? '' : ' disabled'}>${time ? `Открыть в календаре: ${longDate(date)}, ${time}` : 'Выбери время'}</button>
+      <p class="cal-note">Откроется Google Календарь с готовым событием: проверь время и нажми «Сохранить».</p>
+    </div>`;
+}
+
+function openCalendarMenu(anchor, t) {
+  const today = state.r.today;
+  const date = [t.scheduled, t.due].find((d) => d && d >= today) ?? addDays(today, 1);
+  state.cal = { key: t.key, date, time: null, minutes: state.cal?.minutes ?? 30 };
+  showPopover(anchor, calendarMenu());
+}
+
+function renderCalendarMenu(focusId) {
+  document.getElementById('popover').innerHTML = calendarMenu();
+  if (focusId) document.getElementById(focusId)?.focus();
+}
+
+function openInCalendar() {
+  const t = state.byKey.get(state.cal.key);
+  closePopover();
+  if (!t) return toast('Задача изменилась, открой меню календаря ещё раз', { error: true });
+  const links = [...t.description.matchAll(TOKEN)].map((m) => m[4] ?? m[5]).filter((url) => /^https?:/i.test(url ?? ''));
+  const { date, time, minutes } = state.cal;
+  window.open(calendarUrl({
+    title: plainText(t.description),
+    details: [...links, `Заметка: ${t.path}`, obsidianUrl(t.path)].join('\n'),
+    date,
+    time,
+    minutes,
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  }), '_blank', 'noopener');
+  toast('Событие открыто в Google Календаре — нажми там «Сохранить»');
 }
 
 const closePopover = () => {
@@ -834,6 +903,17 @@ document.addEventListener('click', async (e) => {
     case 'set-priority':
       closePopover();
       return setPriority(state.byKey.get(el.dataset.key), value || null);
+    case 'cal-menu':
+      return openCalendarMenu(el, t);
+    case 'cal-date':
+    case 'cal-time':
+      state.cal[action.slice(4)] = value;
+      return renderCalendarMenu();
+    case 'cal-minutes':
+      state.cal.minutes = Number(value);
+      return renderCalendarMenu();
+    case 'cal-open':
+      return openInCalendar();
     case 'collapse':
       if (state.collapsed.has(el.dataset.id)) state.collapsed.delete(el.dataset.id);
       else state.collapsed.add(el.dataset.id);
@@ -905,6 +985,9 @@ document.addEventListener('change', (e) => {
     renderQuickAdd();
   } else if (target.id === 'ed-note') {
     state.editing.draft.target = JSON.parse(target.value);
+  } else if (target.id === 'cal-date' || target.id === 'cal-time') {
+    if (target.value) state.cal[target.id.slice(4)] = target.value;
+    renderCalendarMenu(target.id);
   } else if (target.matches('.editor .date-input')) {
     state.editing.draft[target.dataset.field] = target.value || null;
     render();
@@ -932,7 +1015,7 @@ document.addEventListener('keydown', (e) => {
 // --- Названия для ссылок: [Название](ссылка) вместо голого адреса, как у Auto Link Title.
 
 const pendingTitles = new Set();
-const plainText = (s) => s.replace(/\[((?:[^[\]]|\[[^\]]*\])*)\]\(\S+?\)/g, '$1');
+const plainText = (s) => s.replace(/\[((?:[^[\]]|\[[^\]]*\])*)\]\(\S+?\)/g, '$1').replace(/\\([[\]|])/g, '$1');
 const shorten = (s, max = 40) => (s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s);
 const bareUrls = (text) => [...text.matchAll(TOKEN)].filter((m) => m[5]).map((m) => ({ url: m[5], index: m.index }));
 const waitTitles = () => Promise.race([Promise.allSettled([...pendingTitles]), new Promise((done) => setTimeout(done, 4000))]);
