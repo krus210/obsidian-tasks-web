@@ -1,5 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { extractTitle, fetchTitle, isPrivateAddress } from '../lib/link-title.mjs';
 
 test('заголовок страницы: <title> с сущностями, затем og:title', () => {
@@ -14,7 +18,7 @@ test('локальные и не-http ссылки не запрашиваютс
   await assert.rejects(fetchTitle('http://[::1]:7373/'), { status: 422 });
   await assert.rejects(fetchTitle('http://2130706433/'), { status: 422 });
   await assert.rejects(fetchTitle('http://100.64.0.1/'), { status: 422 });
-  await assert.rejects(fetchTitle('file:///etc/passwd'), { status: 422 });
+  await assert.rejects(fetchTitle('ftp://example.com/a'), { status: 422 });
   await assert.rejects(fetchTitle('не ссылка'), { status: 422 });
 });
 
@@ -25,4 +29,14 @@ test('внутренние адреса отличаются от публичн
   for (const ip of ['8.8.8.8', '178.248.237.68', '172.32.0.1', '2001:4860:4860::8888', '::ffff:8.8.8.8']) {
     assert.equal(isPrivateAddress(ip), false, ip);
   }
+});
+
+test('название локального файла: <title>, заголовок заметки или имя файла', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'task-web-title-'));
+  const file = (name, text) => fs.writeFile(path.join(dir, name), text).then(() => pathToFileURL(path.join(dir, name)).href);
+  assert.equal(await fetchTitle(await file('index.html', '<head><title>Fighting Code Slop &amp; итоги</title></head>')), 'Fighting Code Slop & итоги');
+  assert.equal(await fetchTitle(await file('note.md', 'текст\n# Конспект доклада\n')), 'Конспект доклада');
+  assert.equal(await fetchTitle(await file('empty.html', '<html></html>')), 'empty.html');
+  assert.equal(await fetchTitle(await file('slides.pdf', '%PDF')), 'slides.pdf');
+  await assert.rejects(fetchTitle(pathToFileURL(path.join(dir, 'нет.html')).href), { status: 422, message: /не найден/ });
 });

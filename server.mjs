@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchTitle } from './lib/link-title.mjs';
+import { openLocal } from './lib/local-file.mjs';
 import { Vault } from './lib/vault.mjs';
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
@@ -44,6 +45,7 @@ const ACTIONS = {
   '/api/move': (body) => vault.moveTask(body),
   '/api/undo': (body) => vault.undo(body),
   '/api/title': async (body) => ({ title: await fetchTitle(body.url) }),
+  '/api/open-file': (body) => openLocal(body.url),
 };
 
 // Версия страницы — хэш файлов интерфейса. Открытая вкладка сравнивает её со своей

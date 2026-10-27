@@ -224,6 +224,10 @@ const TOKEN = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]|\[((?:[^[\]]|\[[^\]]*\])*)\]\((\
 function shortUrl(url) {
   try {
     const u = new URL(url);
+    if (u.protocol === 'file:') {
+      const tail = decodeURIComponent(u.pathname).split('/').filter(Boolean).slice(-2).join('/');
+      return tail.length > 40 ? `…${tail.slice(-39)}` : tail;
+    }
     const tail = u.pathname.length > 24 ? `${u.pathname.slice(0, 22)}…` : u.pathname;
     return `${u.hostname.replace(/^www\./, '')}${tail === '/' ? '' : tail}`;
   } catch {
@@ -231,12 +235,13 @@ function shortUrl(url) {
   }
 }
 
-// Ссылкой становятся только веб-адреса, почта и Obsidian: javascript: и другие схемы остаются текстом.
-const SAFE_HREF = /^(https?|mailto|obsidian):/i;
+// Ссылкой становятся только веб-адреса, почта, Obsidian и локальные файлы:
+// javascript: и другие схемы остаются текстом. Файлы file:// открывает сервер.
+const SAFE_HREF = /^(https?|mailto|obsidian|file):/i;
 
 function link(href, text) {
   if (!SAFE_HREF.test(href)) return text;
-  const external = !href.startsWith('obsidian:');
+  const external = !/^(obsidian|file):/i.test(href);
   return `<a href="${esc(href)}"${external ? ' target="_blank" rel="noopener"' : ''}>${text}</a>`;
 }
 
@@ -953,6 +958,11 @@ document.addEventListener('submit', async (e) => {
 });
 
 document.addEventListener('click', async (e) => {
+  const fileLink = e.target.closest('a[href^="file:" i]');
+  if (fileLink) {
+    e.preventDefault();
+    return api('/api/open-file', { url: fileLink.getAttribute('href') }).catch((err) => toast(err.message, { error: true }));
+  }
   if (e.target.closest('a')) return;
   const el = e.target.closest('[data-action]');
   if (!e.target.closest('#popover') && el?.dataset.action !== 'prio-menu') closePopover();
@@ -1139,7 +1149,7 @@ async function fillTitle(inputId, url) {
 document.addEventListener('paste', (e) => {
   const input = e.target.closest?.('#qa-text, #ed-text, #sub-text');
   const text = e.clipboardData?.getData('text/plain').trim() ?? '';
-  if (!input || !/^https?:\/\/\S+$/.test(text)) return;
+  if (!input || !/^(https?|file):\/\/\S+$/.test(text)) return;
   const job = fillTitle(input.id, text);
   pendingTitles.add(job);
   job.finally(() => pendingTitles.delete(job));
