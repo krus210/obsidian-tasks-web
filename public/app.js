@@ -1,7 +1,7 @@
 // Интерфейс задач: фильтры, дерево заметок, матрица Эйзенхауэра и быстрый ввод.
 // Все изменения уходят на сервер, который правит строки в заметках Obsidian.
 
-import { calendarUrl } from './calendar.js';
+import { calendarUrl, icsCalendar } from './calendar.js';
 
 const QUADRANTS = [
   { key: 'q1', priority: 'highest', emoji: '🔺', short: 'Q1', title: 'Сделать сейчас', hint: 'Важно и срочно' },
@@ -108,6 +108,7 @@ const state = {
   addingSub: null,
   qa: { priority: null, date: null, due: null, target: null },
   cal: null,
+  plan: null,
   pendingReload: false,
 };
 
@@ -596,6 +597,12 @@ function renderHeader() {
   }
   document.getElementById('filters').innerHTML = chips.join('');
 
+  const day = focusDay();
+  const count = day ? dayTasks().length : 0;
+  document.getElementById('day-actions').innerHTML = count
+    ? `<button type="button" class="btn" data-action="plan-day">📆 В календарь на ${day === state.r.today ? 'сегодня' : 'завтра'}: ${count}</button>`
+    : '';
+
   for (const btn of document.querySelectorAll('[data-action="view"]')) {
     const on = btn.dataset.view === state.view;
     btn.classList.toggle('on', on);
@@ -784,21 +791,84 @@ function renderCalendarMenu(focusId) {
   if (focusId) document.getElementById(focusId)?.focus();
 }
 
+// Описание события: ссылки из задачи и путь к заметке, чтобы вернуться к ней.
+function eventDetails(t) {
+  const links = [...t.description.matchAll(TOKEN)].map((m) => m[4] ?? m[5]).filter((url) => /^https?:/i.test(url ?? ''));
+  return [...links, `Заметка: ${t.path}`, obsidianUrl(t.path)].join('\n');
+}
+
 function openInCalendar() {
   const t = state.byKey.get(state.cal.key);
   closePopover();
   if (!t) return toast('Задача изменилась, открой меню календаря ещё раз', { error: true });
-  const links = [...t.description.matchAll(TOKEN)].map((m) => m[4] ?? m[5]).filter((url) => /^https?:/i.test(url ?? ''));
   const { date, time, minutes } = state.cal;
   window.open(calendarUrl({
     title: plainText(t.description),
-    details: [...links, `Заметка: ${t.path}`, obsidianUrl(t.path)].join('\n'),
+    details: eventDetails(t),
     date,
     time,
     minutes,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   }), '_blank', 'noopener');
   toast('Событие открыто в Google Календаре — нажми там «Сохранить»');
+}
+
+// --- День в календарь: задачи «Сегодня» или «Завтра» одним файлом .ics.
+// Время и длительность ставятся здесь; задача без времени станет событием на весь день.
+
+const focusDay = () => ({ today: state.r.today, tomorrow: state.r.tomorrow })[state.when];
+const dayTasks = () => state.data.tasks.filter((t) => matches(t) && t.description.trim());
+
+function planMenu() {
+  const { day, items } = state.plan;
+  const chosen = items.filter((i) => i.on).length;
+  const durations = CAL_MINUTES.map(([m, label]) => `<option value="${m}">${label}</option>`).join('');
+  return `
+    <div class="plan-pop">
+      <p class="plan-head">${longDate(day)}. Без времени — событие на весь день.</p>
+      <div class="plan-list">
+        ${items.map((i, index) => `
+          <div class="plan-row" data-index="${index}">
+            <label class="plan-task"><input type="checkbox" data-plan="on"${i.on ? ' checked' : ''}><span>${esc(i.title)}</span></label>
+            <input type="time" class="date-input" data-plan="time" step="900" value="${i.time}" aria-label="Время">
+            <select class="select" data-plan="minutes" aria-label="Длительность">${durations.replace(`value="${i.minutes}"`, `value="${i.minutes}" selected`)}</select>
+          </div>`).join('')}
+      </div>
+      <button type="button" class="btn primary" data-action="plan-download"${chosen ? '' : ' disabled'}>Скачать файл для календаря: ${chosen}</button>
+      <p class="cal-note">Откроется импорт Google Календаря: выбери скачанный файл и нажми «Импорт».</p>
+    </div>`;
+}
+
+function openPlan(anchor) {
+  const day = focusDay();
+  state.plan = {
+    day,
+    items: dayTasks().map((t) => ({ id: `${stableId(t)}|${day}`, title: plainText(t.description), details: eventDetails(t), on: true, time: '', minutes: 30 })),
+  };
+  showPopover(anchor, planMenu());
+}
+
+function updatePlan(input) {
+  const item = state.plan.items[input.closest('.plan-row').dataset.index];
+  const field = input.dataset.plan;
+  item[field] = field === 'on' ? input.checked : field === 'minutes' ? Number(input.value) : input.value;
+  const chosen = state.plan.items.filter((i) => i.on).length;
+  const button = document.querySelector('[data-action="plan-download"]');
+  button.disabled = !chosen;
+  button.textContent = `Скачать файл для календаря: ${chosen}`;
+}
+
+function downloadPlan() {
+  const { day, items } = state.plan;
+  const ics = icsCalendar(items.filter((i) => i.on).map((i) => ({ ...i, date: day, time: i.time || null })));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' }));
+  a.download = `tasks-${day}.ics`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+  closePopover();
+  window.open('https://calendar.google.com/calendar/r/settings/export', '_blank', 'noopener');
+  toast(`Файл ${a.download} скачан: выбери его в импорте Google Календаря и нажми «Импорт»`);
 }
 
 const closePopover = () => {
@@ -914,6 +984,10 @@ document.addEventListener('click', async (e) => {
       return renderCalendarMenu();
     case 'cal-open':
       return openInCalendar();
+    case 'plan-day':
+      return openPlan(el);
+    case 'plan-download':
+      return downloadPlan();
     case 'collapse':
       if (state.collapsed.has(el.dataset.id)) state.collapsed.delete(el.dataset.id);
       else state.collapsed.add(el.dataset.id);
@@ -985,6 +1059,8 @@ document.addEventListener('change', (e) => {
     renderQuickAdd();
   } else if (target.id === 'ed-note') {
     state.editing.draft.target = JSON.parse(target.value);
+  } else if (target.dataset.plan) {
+    updatePlan(target);
   } else if (target.id === 'cal-date' || target.id === 'cal-time') {
     if (target.value) state.cal[target.id.slice(4)] = target.value;
     renderCalendarMenu(target.id);

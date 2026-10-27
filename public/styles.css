@@ -1171,6 +1171,59 @@ body.drag-task .nav-note {
   background: var(--hover);
 }
 
+.day-actions:not(:empty) {
+  margin-top: 10px;
+}
+
+.plan-pop {
+  display: grid;
+  gap: 12px;
+  width: min(560px, calc(100vw - 24px));
+  padding: 8px;
+}
+
+.plan-head {
+  margin: 0;
+  font-weight: 600;
+}
+
+.plan-list {
+  display: grid;
+  gap: 6px;
+  max-height: min(420px, 60vh);
+  overflow-y: auto;
+}
+
+.plan-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.plan-task {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.plan-task span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-row:has(input[data-plan="on"]:not(:checked)) .plan-task span {
+  color: var(--ink-3);
+  text-decoration: line-through;
+}
+
+.plan-pop .btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .cal-pop {
   display: grid;
   gap: 12px;
