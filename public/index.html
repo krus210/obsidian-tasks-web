@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Задачи</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='3' y='3' width='12' height='12' rx='3' fill='%23e5484d'/><rect x='17' y='3' width='12' height='12' rx='3' fill='%233e63dd'/><rect x='3' y='17' width='12' height='12' rx='3' fill='%23e2a336'/><rect x='17' y='17' width='12' height='12' rx='3' fill='%23a0a3ad'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="capture">
+    <form id="quick-add" class="capture-form" autocomplete="off">
+      <div class="capture-line">
+        <div class="capture-field">
+          <label class="visually-hidden" for="qa-text">Новая задача</label>
+          <input id="qa-text" class="capture-input" placeholder="Новая задача.  ! — квадрант,  @ — дата,  # — заметка" enterkeyhint="done"
+            role="combobox" aria-autocomplete="list" aria-controls="suggest" aria-expanded="false">
+          <div id="suggest" class="suggest" role="listbox" hidden></div>
+        </div>
+        <label class="target-pill" title="В какую заметку добавить">
+          <span>в</span>
+          <select id="qa-target" class="select"></select>
+        </label>
+        <button type="submit" class="btn primary">Добавить</button>
+      </div>
+      <div id="qa-options" class="capture-options"></div>
+    </form>
+  </header>
+
+  <div class="layout">
+    <nav id="sidebar" class="sidebar" aria-label="Фильтры"></nav>
+
+    <main class="content">
+      <div class="toolbar">
+        <div class="heading">
+          <h1 id="title">Задачи</h1>
+          <div id="subtitle" class="subtitle"></div>
+        </div>
+        <div class="tools">
+          <div class="seg" role="group" aria-label="Вид">
+            <button class="chip" data-action="view" data-view="list">Список</button>
+            <button class="chip" data-action="view" data-view="matrix">Матрица</button>
+          </div>
+          <label class="visually-hidden" for="sort">Порядок</label>
+          <select id="sort" class="select">
+            <option value="priority">По приоритету</option>
+            <option value="date">По дате</option>
+            <option value="file">Как в заметке</option>
+          </select>
+          <label class="visually-hidden" for="search">Поиск</label>
+          <input id="search" class="search" type="search" placeholder="Поиск  /">
+        </div>
+      </div>
+      <div id="filters" class="active-filters"></div>
+      <div id="content"></div>
+    </main>
+  </div>
+
+  <div id="popover" class="popover" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

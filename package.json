@@ -1,0 +1,19 @@
+{
+  "name": "obsidian-tasks-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Браузерный список задач поверх хранилища Obsidian в формате плагина Tasks",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/krus210/obsidian-tasks-web.git"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test"
+  }
+}

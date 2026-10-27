@@ -1,0 +1,7 @@
+{
+  "vault": "../vault",
+  "port": 7373,
+  "inbox": "Inbox.md",
+  "archiveFolders": [],
+  "exclude": []
+}
