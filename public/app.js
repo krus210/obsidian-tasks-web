@@ -179,6 +179,8 @@ const WHEN = [
   { key: 'nextweek', label: 'Следующая неделя', test: (t) => happens(t, state.r.nextStart, state.r.nextEnd) },
   { key: 'nodate', label: 'Без даты', test: (t) => !datesOf(t).length },
   { key: 'all', label: 'Все открытые', test: () => true },
+  // Без фильтров: открытые и закрытые задачи, включая архив, — как в самой заметке.
+  { key: 'everything', label: 'Все задачи', closed: true, test: () => true },
 ];
 const whenDef = (key) => WHEN.find((w) => w.key === key) ?? WHEN[0];
 
@@ -189,7 +191,8 @@ function searchOk(t) {
 }
 
 function matches(t, skip = '') {
-  if (!isActive(t) || !whenDef(state.when).test(t) || !inArea(t)) return false;
+  const when = whenDef(state.when);
+  if (!(when.closed ? Boolean(t.description) : isActive(t)) || !when.test(t) || !inArea(t)) return false;
   if (skip !== 'quadrant' && state.quadrant !== 'all' && !inQuadrant(t, state.quadrant)) return false;
   return searchOk(t);
 }
@@ -435,7 +438,7 @@ function renderFolder(node) {
 function renderFile(file, tasks, count) {
   const sections = state.files.get(file)?.sections ?? [];
   const sectionIdx = (t) => sections.indexOf(t.section);
-  const sorted = tasks.sort((a, b) => sectionIdx(a) - sectionIdx(b) || SORTS[state.sort](a, b));
+  const sorted = tasks.sort((a, b) => isClosed(a) - isClosed(b) || sectionIdx(a) - sectionIdx(b) || SORTS[state.sort](a, b));
   let html = `
     <div class="file">
       <div class="file-head" data-drop-note="${esc(file)}">
@@ -474,7 +477,7 @@ function renderList() {
 function renderMatrix() {
   const cells = Object.fromEntries(QUADRANTS.map((q) => [q.key, []]));
   for (const t of state.data.tasks) {
-    if (!matches(t, 'quadrant')) continue;
+    if (isClosed(t) || !matches(t, 'quadrant')) continue;
     const q = quadrantOf(t);
     if (q.key === 'none' && t.parentKey) continue;
     cells[q.key].push(t);
@@ -548,7 +551,8 @@ function renderSidebar() {
       <span class="nav-label">${label}</span>${extra}<span class="count">${n ?? ''}</span>
     </button>`;
 
-  const whenItems = WHEN.map((w) => item('when', w.key, w.label, count(scoped, w.test), state.when === w.key,
+  const everything = state.data.tasks.filter((t) => t.description && inArea(t));
+  const whenItems = WHEN.map((w) => item('when', w.key, w.label, count(w.closed ? everything : scoped, w.test), state.when === w.key,
     w.key === 'today' && overdueCount ? `<span class="late-dot" title="Из них просрочено">${overdueCount}</span>` : '')).join('')
     + item('when', 'done', 'Архив', '', state.when === 'done');
 
