@@ -1384,6 +1384,11 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') scheduleReload();
 });
 
+// Высота шапки меняется вместе с шириной окна: боковая панель прилипает сразу под ней.
+new ResizeObserver(([entry]) => {
+  document.documentElement.style.setProperty('--capture-h', `${Math.ceil(entry.borderBoxSize[0].blockSize)}px`);
+}).observe(document.querySelector('.capture'));
+
 load().catch((err) => {
   document.getElementById('content').innerHTML = `<div class="empty">Не удалось загрузить задачи: ${esc(err.message)}. Проверь, что сервер запущен.</div>`;
 });
