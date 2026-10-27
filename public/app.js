@@ -1018,10 +1018,8 @@ document.addEventListener('click', async (e) => {
       if (state.view === 'matrix' && value !== 'all') state.view = 'list';
       return render();
     case 'area':
-      // Папка или заметка открывается целиком; дату и квадрант можно выбрать после.
+      // Выбранные «Когда» и квадрант сохраняются: видно, что из них есть в этой папке.
       state.area = el.dataset.area ?? value;
-      state.when = 'all';
-      state.quadrant = 'all';
       return render();
     case 'clear-area':
       state.area = '';
