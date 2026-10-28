@@ -629,11 +629,14 @@ function renderHeader() {
   document.getElementById('sort').hidden = state.view !== 'list' || state.when === 'done';
 }
 
-// Новая задача идёт в выбранную вручную заметку, иначе в открытую сейчас, иначе во «Входящие».
+// Новая задача идёт в выбранную вручную заметку, иначе в открытую сейчас. В открытой папке —
+// в её первую заметку, а если «Входящие» лежат в этой папке, то в них. Без фильтра — во «Входящие».
 function currentTarget() {
   if (state.qa.target) return state.qa.target;
-  const open = state.files.get(state.area);
-  return open && !open.archived ? { path: open.path } : { path: state.data.inbox };
+  const { inbox, files } = state.data;
+  const inFolder = (path) => path.startsWith(`${state.area}/`);
+  const note = state.files.get(state.area) ?? (state.area && !inFolder(inbox) && files.find((f) => !f.archived && inFolder(f.path)));
+  return { path: note && !note.archived ? note.path : inbox };
 }
 
 function renderQuickAdd() {
@@ -1029,10 +1032,13 @@ document.addEventListener('click', async (e) => {
       return render();
     case 'area':
       // Выбранные «Когда» и квадрант сохраняются: видно, что из них есть в этой папке.
+      // Заметка для новой задачи, выбранная вручную, сбрасывается на открытую.
       state.area = el.dataset.area ?? value;
+      state.qa.target = null;
       return render();
     case 'clear-area':
       state.area = '';
+      state.qa.target = null;
       return render();
     case 'view':
       state.view = el.dataset.view;
